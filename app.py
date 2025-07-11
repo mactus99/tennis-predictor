@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 
 # ══════  VERSIONE / RESET SESSIONE  ══════
-APP_VERSION = "2025-07-12-live-set"
+APP_VERSION = "2025-07-12-live-set-v1.1"
 if st.session_state.get("version") != APP_VERSION:
     st.session_state.clear()
     st.session_state["version"] = APP_VERSION
@@ -70,17 +70,24 @@ def hold_prob(player, surface, gender, stats):
     return 1 / (1 + np.exp(-(β0 + β1 * sv + β2 * rt)))
 
 def simulate_set(pA, pB, first_srv="A", sims=20000):
+    """
+    Simula un set secondo le regole classiche: 6-games win by 2, tie-break a 6-6.
+    Restituisce un dizionario {punteggio: probabilità}.
+    """
     out = {}
     for _ in range(sims):
         A = B = 0
         srv_A = (first_srv == "A")
         while True:
+            # condizione vittoria normale
             if (A >= 6 or B >= 6) and abs(A - B) >= 2:
                 break
-            if A == 6 and B == 6:               # tie-break
-                A += np.random.rand() < 0.52
+            # tie-break a 6-6
+            if A == 6 and B == 6:
+                A += np.random.rand() < 0.52   # leggero edge al battitore iniziale
                 B = 7 - A
                 break
+            # game
             if srv_A:
                 A += np.random.rand() < pA
                 B += np.random.rand() >= pA
@@ -91,7 +98,7 @@ def simulate_set(pA, pB, first_srv="A", sims=20000):
         out[f"{A}-{B}"] = out.get(f"{A}-{B}", 0) + 1
     tot = sum(out.values())
     return {k: v / tot for k, v in out.items()}
-
+    
 # ══════  UI BASE  ══════
 st.set_page_config(page_title="Tennis Predictor", page_icon="🎾", layout="centered")
 st.title("🎾 Tennis Set Predictor (ATP/WTA)")
@@ -149,15 +156,36 @@ with tab_generic:
             st.metric("Valore atteso", f"{ev*100:.1f}%")
 # ---------- TAB LIVE ----------
 with tab_live:
-    st.markdown("### Simula il **set successivo** con dati LIVE")
-    col1, col2 = st.columns(2)
-    prev_set = col1.text_input("Punteggio set appena concluso (es. 6-4)")
-    first_srv_next = col2.radio("Chi serve per primo nel set +1?", ["A", "B"])
-    pA_live = st.slider("Probabilità live: A tiene il servizio", 0.45, 0.95, 0.80, 0.01)
-    pB_live = st.slider("Probabilità live: B tiene il servizio", 0.45, 0.95, 0.78, 0.01)
+    st.markdown("### ⚡ Simula il **prossimo set** con dati live")
+
+    mode = st.radio("Scegli la modalità di input",
+                    ["Probabilità di hold", "Statistiche live (prime %, punti vinti)"])
+
+    first_srv_next = st.radio("Chi serve per primo nel set +1?", ["A", "B"], horizontal=True)
+
+    if mode == "Probabilità di hold":
+        pA_live = st.slider("Probabilità live: A tiene il servizio", 0.45, 0.95, 0.80, 0.01)
+        pB_live = st.slider("Probabilità live: B tiene il servizio", 0.45, 0.95, 0.78, 0.01)
+
+    else:  # Statistiche dettagliate
+        st.markdown("#### Inserisci le statistiche del set appena finito")
+        col1, col2 = st.columns(2)
+        a_1st_in  = col1.slider("A – % prime in campo", 40, 90, 65)
+        a_1st_won = col1.slider("A – % punti vinti su 1ª", 50, 90, 75)
+        a_2nd_won = col1.slider("A – % punti vinti su 2ª", 30, 70, 50)
+
+        b_1st_in  = col2.slider("B – % prime in campo", 40, 90, 63)
+        b_1st_won = col2.slider("B – % punti vinti su 1ª", 50, 90, 72)
+        b_2nd_won = col2.slider("B – % punti vinti su 2ª", 30, 70, 48)
+
+        # modello semplificato: hold ≈ prime_in * 1st_won + (1-prime_in) * 2nd_won
+        pA_live = (a_1st_in/100) * (a_1st_won/100) + (1 - a_1st_in/100) * (a_2nd_won/100)
+        pB_live = (b_1st_in/100) * (b_1st_won/100) + (1 - b_1st_in/100) * (b_2nd_won/100)
+        st.info(f"Probabilità calcolata:  A hold ≈ {pA_live:.2%}  |  B hold ≈ {pB_live:.2%}")
+
     if st.button("Simula prossimo set"):
         live_out = simulate_set(pA_live, pB_live, first_srv_next)
-        st.table(pd.DataFrame(sorted(live_out.items(), key=lambda x: -x[1])[:10],
+        st.table(pd.DataFrame(sorted(live_out.items(), key=lambda x: -x[1])[:12],
                               columns=["Risultato", "Probabilità"]))
 
 # ---------- TAB DB ----------
