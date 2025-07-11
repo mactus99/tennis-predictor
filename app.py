@@ -1,17 +1,15 @@
-# --------------------------------------------------
-#  🎾  TENNIS SET PREDICTOR – ATP / WTA  (v2025-07-12)
-# --------------------------------------------------
 import streamlit as st
 import pandas as pd
 import numpy as np
 
-# ══════  VERSIONE / RESET SESSIONE  ══════
-APP_VERSION = "2025-07-12-live-set-v1.2"
+# Versione: aggiorna ogni volta che modifichi il codice
+APP_VERSION = "2025-07-12-live-set-v1.3"
 if st.session_state.get("version") != APP_VERSION:
     st.session_state.clear()
     st.session_state["version"] = APP_VERSION
 
-# ══════  FUNZIONI BACKEND  ══════
+# =========== FUNZIONI BACKEND ===========
+
 @st.cache_data(show_spinner=False)
 def scarica_e_aggiorna_stats():
     # dataset Jeff Sackmann (2023-2024)
@@ -55,10 +53,7 @@ def scarica_e_aggiorna_stats():
                     "return_pts_won": sum(rt_won) / len(rt_won),
                     "gender": gender
                 })
-        return pd.DataFrame([
-    {"Risultato": k, "Probabilità": f"{v*100:.2f}%"} 
-    for k, v in sorted(live_out.items(), key=lambda x: -x[1])[:12]
-])
+        return pd.DataFrame(rows)
 
     stats_df = pd.concat([make_stats(df_atp, "M"), make_stats(df_wta, "F")]).reset_index(drop=True)
     matches_df = pd.concat([df_atp, df_wta])
@@ -73,40 +68,52 @@ def hold_prob(player, surface, gender, stats):
     return 1 / (1 + np.exp(-(β0 + β1 * sv + β2 * rt)))
 
 def simulate_set(pA, pB, first_srv="A", sims=20000):
-    """
-    Simula un set secondo le regole classiche: 6-games win by 2, tie-break a 6-6.
-    Restituisce un dizionario {punteggio: probabilità}.
-    """
     out = {}
     for _ in range(sims):
         A = B = 0
         srv_A = (first_srv == "A")
         while True:
-            # condizione vittoria normale
+            # Win by 2, 6+ games
             if (A >= 6 or B >= 6) and abs(A - B) >= 2:
                 break
-            # tie-break a 6-6
+            # Tie-break at 6-6
             if A == 6 and B == 6:
-                A += np.random.rand() < 0.52   # leggero edge al battitore iniziale
-                B = 7 - A
+                tb = np.random.rand() < 0.52
+                if tb:
+                    A += 1
+                else:
+                    B += 1
                 break
-            # game
+            # Game
             if srv_A:
-                A += np.random.rand() < pA
-                B += np.random.rand() >= pA
+                if np.random.rand() < pA:
+                    A += 1
+                else:
+                    B += 1
             else:
-                B += np.random.rand() < pB
-                A += np.random.rand() >= pB
+                if np.random.rand() < pB:
+                    B += 1
+                else:
+                    A += 1
             srv_A = not srv_A
-        out[f"{A}-{B}"] = out.get(f"{A}-{B}", 0) + 1
+        # Rimuove punteggi impossibili tipo 7-0, 8-6, ecc.
+        if (A >= 6 or B >= 6) and abs(A - B) >= 2 and (A <= 7 and B <= 7):
+            out[f"{A}-{B}"] = out.get(f"{A}-{B}", 0) + 1
+        elif (A == 7 and B == 6) or (B == 7 and A == 6):
+            out[f"{A}-{B}"] = out.get(f"{A}-{B}", 0) + 1
     tot = sum(out.values())
     return {k: v / tot for k, v in out.items()}
-    
-# ══════  UI BASE  ══════
-st.set_page_config(page_title="Tennis Predictor", page_icon="🎾", layout="centered")
+
+def calcola_hold_percent(prime_in, first_won, second_won):
+    # Modello semplificato: percentuale di game vinti al servizio ≈
+    #   prime_in * first_won + (1 - prime_in) * second_won
+    p_hold = (prime_in / 100) * (first_won / 100) + (1 - prime_in / 100) * (second_won / 100)
+    return p_hold
+
+# ========== APP ==========
+st.set_page_config(page_title="Tennis Set Predictor", page_icon="🎾", layout="centered")
 st.title("🎾 Tennis Set Predictor (ATP/WTA)")
 
-# prima volta: scarica dati
 if "stats" not in st.session_state:
     stats_df, matches_df = scarica_e_aggiorna_stats()
     st.session_state["stats"] = stats_df
@@ -115,19 +122,17 @@ else:
     stats_df = st.session_state["stats"]
     matches_df = st.session_state["matches"]
 
-# cache per simulazioni
 if "outcomes" not in st.session_state:
     st.session_state["outcomes"] = None
     st.session_state["results_table"] = None
 
-# ══════  TABS  ══════
 tab_generic, tab_live, tab_manage = st.tabs(
     ["🎾 Predizione generica", "⚡ Live set", "🛠️ Gestione database"]
 )
 
 # ---------- TAB GENERICO ----------
 with tab_generic:
-    st.markdown("ℹ️ *Simulazione media pre-match: usa dati storici*")
+    st.markdown("ℹ️ <b>Simulazione media pre-match:</b> usa dati storici", unsafe_allow_html=True)
     gen = st.radio("Circuito", ["ATP (M)", "WTA (F)"], horizontal=True)
     gcode = "M" if gen.startswith("ATP") else "F"
     surf = st.selectbox("Superficie", ["Hard", "Clay", "Grass"])
@@ -137,78 +142,73 @@ with tab_generic:
     B = colB.selectbox("Giocatore B", players)
     pA = hold_prob(A, surf, gcode, stats_df)
     pB = hold_prob(B, surf, gcode, stats_df)
-    st.write(f"Probabilità hold **{A}**: {pA*100:.1f}%  |  **{B}**: {pB*100:.1f}%")
+    st.write(f"Probabilità hold <b>{A}</b>: <b>{pA*100:.1f}%</b>  |  <b>{B}</b>: <b>{pB*100:.1f}%</b>", unsafe_allow_html=True)
     if st.button("Calcola probabilità set"):
         st.session_state["outcomes"] = simulate_set(pA, pB, first_srv="A")
-        st.session_state["results_table"] = sorted(
-            st.session_state["outcomes"].items(), key=lambda x: -x[1]
-        )
-        st.table(pd.DataFrame([
-    {"Risultato": k, "Probabilità": f"{v*100:.2f}%"} 
-    for k, v in sorted(live_out.items(), key=lambda x: -x[1])[:12]
-]))
+        st.session_state["results_table"] = [
+            {"Risultato": k, "Probabilità": f"{v*100:.2f}%"}
+            for k, v in sorted(st.session_state["outcomes"].items(), key=lambda x: -x[1])
+        ]
+        st.table(pd.DataFrame(st.session_state["results_table"][:10]))
     if st.session_state["outcomes"]:
         st.markdown("---")
         with st.form("quote"):
             quota = st.number_input("Quota bookmaker", 1.01, 1000.0, 3.50, 0.01)
-            score = st.selectbox("Punteggio", [r for r, _ in st.session_state["results_table"]])
+            score = st.selectbox("Punteggio", [r["Risultato"] for r in st.session_state["results_table"]])
             sub = st.form_submit_button("Confronta")
         if sub:
-    p = st.session_state["outcomes"][score]
-    fair = 1 / p
-    ev = quota * p - 1
-
-    colq, colv = st.columns(2)
-    with colq:
-        st.markdown("#### 💸 Quota fair")
-        st.markdown(f"<div style='font-size:2.2em; font-weight:700; color:#1a66ff'>{fair:.2f}</div>", unsafe_allow_html=True)
-        st.caption("Quota reale calcolata")
-    with colv:
-        st.markdown("#### 📈 Valore atteso")
-        st.markdown(f"<div style='font-size:2.2em; font-weight:700; color:{'green' if ev>0 else 'red'}'>{ev*100:.1f}%</div>", unsafe_allow_html=True)
-        st.caption("Scommessa vantaggiosa" if ev>0 else "Scommessa NON vantaggiosa")
-
-    if ev > 0:
-        st.success("👍 Value bet!")
-    else:
-        st.warning("👎 Non conviene")
+            p = st.session_state["outcomes"][score]
+            fair = 1 / p
+            ev = quota * p - 1
+            colq, colv = st.columns(2)
+            with colq:
+                st.markdown("#### 💸 Quota fair")
+                st.markdown(f"<div style='font-size:2.2em; font-weight:700; color:#1a66ff'>{fair:.2f}</div>", unsafe_allow_html=True)
+                st.caption("Quota reale calcolata")
+            with colv:
+                st.markdown("#### 📈 Valore atteso")
+                st.markdown(f"<div style='font-size:2.2em; font-weight:700; color:{'green' if ev>0 else 'red'}'>{ev*100:.1f}%</div>", unsafe_allow_html=True)
+                st.caption("Scommessa vantaggiosa" if ev>0 else "Scommessa NON vantaggiosa")
+            if ev > 0:
+                st.success("👍 Value bet!")
+            else:
+                st.warning("👎 Non conviene")
 
 # ---------- TAB LIVE ----------
 with tab_live:
-    st.markdown("### ⚡ Simula il **prossimo set** con dati live")
-
+    st.markdown("### ⚡ Simula il <b>prossimo set</b> con dati live", unsafe_allow_html=True)
     mode = st.radio("Scegli la modalità di input",
                     ["Probabilità di hold", "Statistiche live (prime %, punti vinti)"])
-
     first_srv_next = st.radio("Chi serve per primo nel set +1?", ["A", "B"], horizontal=True)
 
     if mode == "Probabilità di hold":
-        pA_live = st.slider("Probabilità live: A tiene il servizio", 0.45, 0.95, 0.80, 0.01)
-        pB_live = st.slider("Probabilità live: B tiene il servizio", 0.45, 0.95, 0.78, 0.01)
+        pA_live = st.slider("Probabilità live: A tiene il servizio (%)", 45, 95, 80, 1) / 100
+        pB_live = st.slider("Probabilità live: B tiene il servizio (%)", 45, 95, 78, 1) / 100
 
     else:  # Statistiche dettagliate
         st.markdown("#### Inserisci le statistiche del set appena finito")
         col1, col2 = st.columns(2)
-        a_1st_in  = col1.slider("A – % prime in campo", 40, 90, 65)
-        a_1st_won = col1.slider("A – % punti vinti su 1ª", 50, 90, 75)
-        a_2nd_won = col1.slider("A – % punti vinti su 2ª", 30, 70, 50)
+        a_1st_in  = col1.slider("A – % prime in campo", 40, 90, 65, 1)
+        a_1st_won = col1.slider("A – % punti vinti su 1ª", 50, 90, 75, 1)
+        a_2nd_won = col1.slider("A – % punti vinti su 2ª", 30, 70, 50, 1)
+        b_1st_in  = col2.slider("B – % prime in campo", 40, 90, 63, 1)
+        b_1st_won = col2.slider("B – % punti vinti su 1ª", 50, 90, 72, 1)
+        b_2nd_won = col2.slider("B – % punti vinti su 2ª", 30, 70, 48, 1)
 
-        b_1st_in  = col2.slider("B – % prime in campo", 40, 90, 63)
-        b_1st_won = col2.slider("B – % punti vinti su 1ª", 50, 90, 72)
-        b_2nd_won = col2.slider("B – % punti vinti su 2ª", 30, 70, 48)
-
-        # modello semplificato: hold ≈ prime_in * 1st_won + (1-prime_in) * 2nd_won
-        pA_live = (a_1st_in/100) * (a_1st_won/100) + (1 - a_1st_in/100) * (a_2nd_won/100)
-        pB_live = (b_1st_in/100) * (b_1st_won/100) + (1 - b_1st_in/100) * (b_2nd_won/100)
-        st.info(f"Probabilità calcolata:  A hold ≈ {pA_live:.2%}  |  B hold ≈ {pB_live:.2%}")
+        pA_live = calcola_hold_percent(a_1st_in, a_1st_won, a_2nd_won)
+        pB_live = calcola_hold_percent(b_1st_in, b_1st_won, b_2nd_won)
+        st.info(f"Probabilità calcolata:  A hold ≈ {pA_live*100:.1f}%  |  B hold ≈ {pB_live*100:.1f}%")
 
     if st.button("Simula prossimo set"):
         live_out = simulate_set(pA_live, pB_live, first_srv_next)
-        st.table(pd.DataFrame(sorted(live_out.items(), key=lambda x: -x[1])[:12],
-                              columns=["Risultato", "Probabilità"]))
+        st.table(pd.DataFrame([
+            {"Risultato": k, "Probabilità": f"{v*100:.2f}%"} 
+            for k, v in sorted(live_out.items(), key=lambda x: -x[1])[:12]
+        ]))
 
 # ---------- TAB DB ----------
 with tab_manage:
-    st.markdown("*(Qui rimane il tuo blocco per aggiungere / editare statistiche)*")
+    st.markdown("*(Qui puoi aggiungere o modificare statistiche giocatori, inserisci qui il blocco di gestione che avevi già)*")
 
-st.caption("© 2025 – Demo integrata con simulazione generica + live | dati Jeff Sackmann")
+st.caption("© 2025 – Simulatore ATP/WTA con quote e calcolo live | Dati Jeff Sackmann")
+
