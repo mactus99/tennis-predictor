@@ -2,6 +2,13 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
+# Se la versione del codice cambia, resetta la vecchia sessione
+APP_VERSION = "2025-07-11-fix65"
+
+if st.session_state.get("version") != APP_VERSION:
+    st.session_state.clear()
+    st.session_state["version"] = APP_VERSION
+
 # =========== FUNZIONI BACKEND ===========
 
 @st.cache_data(show_spinner=False)
