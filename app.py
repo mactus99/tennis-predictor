@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 # Versione: aggiorna ogni volta che modifichi il codice
-APP_VERSION = "2025-07-12-live-set-v1.5.3"
+APP_VERSION = "2025-07-12-live-set-v1.5.4"
 if st.session_state.get("version") != APP_VERSION:
     st.session_state.clear()
     st.session_state["version"] = APP_VERSION
@@ -111,10 +111,8 @@ def calcola_hold_percent(prime_in, first_won, second_won):
 # ========== FUNZIONE TABELLA COLORATA ==========
 def tabella_probabilita_colored(lista):
     df = pd.DataFrame(lista)
-    # Colonna "Probabilità" numerica (float)
-    df["Probabilità"] = df["Probabilità"].str.replace("%", "").astype(float)
+    df["Probabilità"] = df["Probabilità"].astype(float)
     df = df.sort_values("Probabilità", ascending=False).reset_index(drop=True)
-    # Rendi la colonna in percentuale, centrata, colorata
     styled = (
         df.style
         .bar(subset=["Probabilità"], color='#abd2fa', vmin=0, vmax=100)
@@ -128,7 +126,14 @@ def tabella_probabilita_colored(lista):
         })
         .hide(axis="index")
     )
-    st.write(styled.to_html(), unsafe_allow_html=True)
+    st.markdown(
+        f"""<div style='display:flex;justify-content:center;width:100%;'>
+                <div style='min-width:360px;max-width:660px;width:100%;'>
+                    {styled.to_html()}
+                </div>
+            </div>""",
+        unsafe_allow_html=True
+    )
 
 # ========== APP ==========
 st.set_page_config(page_title="Tennis Set Predictor", page_icon="🎾", layout="centered")
