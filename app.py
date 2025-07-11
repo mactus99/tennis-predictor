@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 # Versione: aggiorna ogni volta che modifichi il codice
-APP_VERSION = "2025-07-12-live-set-v1.4"
+APP_VERSION = "2025-07-12-live-set-v1.5"
 if st.session_state.get("version") != APP_VERSION:
     st.session_state.clear()
     st.session_state["version"] = APP_VERSION
@@ -105,10 +105,28 @@ def simulate_set(pA, pB, first_srv="A", sims=20000):
     return {k: v / tot for k, v in out.items()}
 
 def calcola_hold_percent(prime_in, first_won, second_won):
-    # Modello semplificato: percentuale di game vinti al servizio ≈
-    #   prime_in * first_won + (1 - prime_in) * second_won
     p_hold = (prime_in / 100) * (first_won / 100) + (1 - prime_in / 100) * (second_won / 100)
     return p_hold
+
+# ========== FUNZIONE TABELLA COLORATA ==========
+def tabella_probabilita_colored(lista):
+    df = pd.DataFrame(lista)
+    df["Val"] = df["Probabilità"].str.replace("%", "").astype(float)
+    df = df.sort_values("Val", ascending=False).reset_index(drop=True)
+    styled = (
+        df[["Risultato", "Probabilità"]]
+        .style
+        .bar(subset=["Probabilità"], color='#abd2fa', vmin=0, vmax=100)
+        .set_properties(**{
+            "font-size": "1.13em",
+            "text-align": "center",
+            "border-radius": "12px",
+            "border": "1.5px solid #dee2ef",
+            "background-color": "#f8faff"
+        })
+        .hide(axis="index")
+    )
+    st.write(styled.to_html(), unsafe_allow_html=True)
 
 # ========== APP ==========
 st.set_page_config(page_title="Tennis Set Predictor", page_icon="🎾", layout="centered")
@@ -149,7 +167,7 @@ with tab_generic:
             {"Risultato": k, "Probabilità": f"{v*100:.2f}%"}
             for k, v in sorted(st.session_state["outcomes"].items(), key=lambda x: -x[1])
         ]
-        st.table(pd.DataFrame(st.session_state["results_table"][:10]))
+        tabella_probabilita_colored(st.session_state["results_table"][:10])
     if st.session_state["outcomes"]:
         st.markdown("---")
         st.markdown("### 🎰 Confronta le quote dei bookmaker")
@@ -202,10 +220,10 @@ with tab_live:
 
     if st.button("Simula prossimo set"):
         live_out = simulate_set(pA_live, pB_live, first_srv_next)
-        st.table(pd.DataFrame([
+        tabella_probabilita_colored([
             {"Risultato": k, "Probabilità": f"{v*100:.2f}%"} 
             for k, v in sorted(live_out.items(), key=lambda x: -x[1])[:12]
-        ]))
+        ])
 
 # ---------- TAB DB ----------
 with tab_manage:
