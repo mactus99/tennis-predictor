@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 # Versione: aggiorna ogni volta che modifichi il codice
-APP_VERSION = "2025-07-12-live-set-v1.3"
+APP_VERSION = "2025-07-12-live-set-v1.4"
 if st.session_state.get("version") != APP_VERSION:
     st.session_state.clear()
     st.session_state["version"] = APP_VERSION
@@ -152,6 +152,7 @@ with tab_generic:
         st.table(pd.DataFrame(st.session_state["results_table"][:10]))
     if st.session_state["outcomes"]:
         st.markdown("---")
+        st.markdown("### 🎰 Confronta le quote dei bookmaker")
         with st.form("quote"):
             quota = st.number_input("Quota bookmaker", 1.01, 1000.0, 3.50, 0.01)
             score = st.selectbox("Punteggio", [r["Risultato"] for r in st.session_state["results_table"]])
@@ -208,7 +209,44 @@ with tab_live:
 
 # ---------- TAB DB ----------
 with tab_manage:
-    st.markdown("*(Qui puoi aggiungere o modificare statistiche giocatori, inserisci qui il blocco di gestione che avevi già)*")
+    st.markdown("### ➕ Aggiungi o aggiorna statistiche giocatore")
+    with st.form(key="add_stat"):
+        player_name = st.text_input("Nome giocatore")
+        surf = st.selectbox("Superficie", ["Hard", "Clay", "Grass"], key="db_surf")
+        sv = st.number_input("Serve pts won (es: 0.50–0.90)", 0.50, 0.95, 0.75, 0.01, key="db_sv")
+        rt = st.number_input("Return pts won (es: 0.20–0.50)", 0.20, 0.60, 0.35, 0.01, key="db_rt")
+        gen = st.radio("Genere", ["M", "F"], horizontal=True, key="db_gen")
+        add_btn = st.form_submit_button("Aggiungi o aggiorna")
+    if add_btn:
+        cond = (stats_df.player == player_name) & (stats_df.surface == surf) & (stats_df.gender == gen)
+        if stats_df[cond].empty:
+            stats_df = pd.concat([
+                stats_df,
+                pd.DataFrame([{
+                    "player": player_name, "surface": surf,
+                    "serve_pts_won": sv, "return_pts_won": rt,
+                    "gender": gen
+                }])
+            ], ignore_index=True)
+            st.success("Nuova statistica aggiunta!")
+        else:
+            stats_df.loc[cond, ["serve_pts_won", "return_pts_won"]] = [sv, rt]
+            st.success("Statistica aggiornata!")
+        st.session_state["stats"] = stats_df
+
+    st.markdown("---")
+    st.markdown("### 📝 Database completo (editabile)")
+    edited_df = st.data_editor(
+        stats_df.sort_values(["gender", "player", "surface"]),
+        num_rows="dynamic", use_container_width=True, key="main_db"
+    )
+    if st.button("💾 Salva tutte le modifiche"):
+        st.session_state["stats"] = edited_df
+        st.success("Statistiche manuali salvate!")
+
+    st.info(
+        "Usa questo tab per aggiungere/aggiornare statistiche mancanti (giocatori, superfici, genere). "
+        "Per la predizione aggiorna sempre le statistiche online, oppure completa manualmente qui."
+    )
 
 st.caption("© 2025 – Simulatore ATP/WTA con quote e calcolo live | Dati Jeff Sackmann")
-
