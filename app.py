@@ -72,7 +72,15 @@ def simulate_set(pA, pB, first_server, n_sim=20000):
     for _ in range(n_sim):
         gA = gB = 0
         server_A = (first_server == "A")
-        while gA < 6 and gB < 6:
+        while True:
+            if (gA >= 6 or gB >= 6) and abs(gA - gB) >= 2:
+                break
+            if gA == 6 and gB == 6:
+                if np.random.rand() < 0.52:
+                    gA += 1
+                else:
+                    gB += 1
+                break
             if server_A:
                 if np.random.rand() < pA:
                     gA += 1
@@ -84,16 +92,10 @@ def simulate_set(pA, pB, first_server, n_sim=20000):
                 else:
                     gA += 1
             server_A = not server_A
-        if gA == gB:  # 6-6 tie-break
-            if np.random.rand() < 0.52:
-                gA += 1
-            else:
-                gB += 1
-        score = f"{max(gA,gB)}-{min(gA,gB)}"
+        score = f"{gA}-{gB}"
         outcomes[score] = outcomes.get(score, 0) + 1
     tot = sum(outcomes.values())
     return {k: v / tot for k, v in outcomes.items()}
-
 # ========== APP ==========
 
 st.set_page_config(page_title="Tennis Set Predictor", page_icon="🎾", layout="centered")
