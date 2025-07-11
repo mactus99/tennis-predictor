@@ -73,14 +73,17 @@ def simulate_set(pA, pB, first_server, n_sim=20000):
         gA = gB = 0
         server_A = (first_server == "A")
         while True:
+            # Termina se uno ha almeno 6 e almeno 2 di vantaggio
             if (gA >= 6 or gB >= 6) and abs(gA - gB) >= 2:
                 break
             if gA == 6 and gB == 6:
+                # Tie-break
                 if np.random.rand() < 0.52:
                     gA += 1
                 else:
                     gB += 1
                 break
+            # Simula il game
             if server_A:
                 if np.random.rand() < pA:
                     gA += 1
@@ -92,10 +95,12 @@ def simulate_set(pA, pB, first_server, n_sim=20000):
                 else:
                     gA += 1
             server_A = not server_A
+        # Registrazione risultato finale valido (es: 7-6, 6-3, ecc.)
         score = f"{gA}-{gB}"
         outcomes[score] = outcomes.get(score, 0) + 1
     tot = sum(outcomes.values())
     return {k: v / tot for k, v in outcomes.items()}
+
 # ========== APP ==========
 
 st.set_page_config(page_title="Tennis Set Predictor", page_icon="🎾", layout="centered")
