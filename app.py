@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 # Versione: aggiorna ogni volta che modifichi il codice
-APP_VERSION = "2025-07-12-live-set-v1.5.4"
+APP_VERSION = "2025-07-12-live-set-v1.5.5"
 if st.session_state.get("version") != APP_VERSION:
     st.session_state.clear()
     st.session_state["version"] = APP_VERSION
@@ -111,7 +111,8 @@ def calcola_hold_percent(prime_in, first_won, second_won):
 # ========== FUNZIONE TABELLA COLORATA ==========
 def tabella_probabilita_colored(lista):
     df = pd.DataFrame(lista)
-    df["Probabilità"] = df["Probabilità"].astype(float)
+    # Rende robusto: se "Probabilità" è stringa con % la converte, se è già float non fa nulla
+    df["Probabilità"] = df["Probabilità"].astype(str).str.replace("%", "").astype(float)
     df = df.sort_values("Probabilità", ascending=False).reset_index(drop=True)
     styled = (
         df.style
