@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 # Versione: aggiorna ogni volta che modifichi il codice
-APP_VERSION = "2025-07-12-live-set-v1.5.1"
+APP_VERSION = "2025-07-12-live-set-v1.5.2"
 if st.session_state.get("version") != APP_VERSION:
     st.session_state.clear()
     st.session_state["version"] = APP_VERSION
@@ -113,10 +113,11 @@ def tabella_probabilita_colored(lista):
     df = pd.DataFrame(lista)
     df["Probabilità_num"] = df["Probabilità"].str.replace("%", "").astype(float)
     df = df.sort_values("Probabilità_num", ascending=False).reset_index(drop=True)
+    # Mostra solo le colonne "Risultato" e "Probabilità"
+    display_df = df[["Risultato", "Probabilità"]]
     styled = (
-        df[["Risultato", "Probabilità", "Probabilità_num"]]
-        .style
-        .bar(subset=["Probabilità_num"], color='#abd2fa', vmin=0, vmax=100)
+        display_df.style
+        .bar(subset=["Probabilità"], color='#abd2fa', vmin=0, vmax=100)
         .set_properties(**{
             "font-size": "1.13em",
             "text-align": "center",
@@ -125,7 +126,6 @@ def tabella_probabilita_colored(lista):
             "background-color": "#f8faff"
         })
         .hide(axis="index")
-        .hide_columns(["Probabilità_num"])
     )
     st.write(styled.to_html(), unsafe_allow_html=True)
 
