@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-# ======== FUNZIONI BACKEND =========
+# =========== FUNZIONI BACKEND ===========
 
 @st.cache_data(show_spinner=False)
 def aggiorna_stats_online():
@@ -94,24 +94,26 @@ def simulate_set(pA, pB, first_server, n_sim=20000):
     tot = sum(outcomes.values())
     return {k: v / tot for k, v in outcomes.items()}
 
-# ======== APP FRONTEND =========
+# ========== APP ==========
 
 st.set_page_config(page_title="Tennis Set Predictor", page_icon="🎾", layout="centered")
 st.title("🎾 Tennis Set Predictor (ATP/WTA)")
 
-@st.cache_data(show_spinner=False)
-def get_stats_and_matches():
-    return aggiorna_stats_online()
-
-# Stato sessione
+# --- Session state inizializzazione ---
 if "stats" not in st.session_state or "matches" not in st.session_state:
-    stats_df, matches_df = get_stats_and_matches()
+    stats_df, matches_df = aggiorna_stats_online()
     st.session_state["stats"] = stats_df
     st.session_state["matches"] = matches_df
 else:
     stats_df = st.session_state["stats"]
     matches_df = st.session_state["matches"]
 
+# Per mantenere la simulazione anche quando cambi le quote!
+if "outcomes" not in st.session_state:
+    st.session_state["outcomes"] = None
+    st.session_state["results_table"] = None
+
+# --- Sidebar: aggiornamento dati e info ---
 if st.sidebar.button("🔄 Aggiorna statistiche online"):
     with st.spinner("Download e aggiornamento statistiche in corso..."):
         stats_df, matches_df = aggiorna_stats_online()
@@ -119,7 +121,6 @@ if st.sidebar.button("🔄 Aggiorna statistiche online"):
         st.session_state["matches"] = matches_df
         st.sidebar.success("Statistiche aggiornate da internet!")
 
-# Info aggiornamento
 if not matches_df.empty:
     try:
         last_date = pd.to_datetime(matches_df['tourney_date'], format='%Y%m%d').max()
@@ -130,64 +131,72 @@ if not matches_df.empty:
 
 tab_predict, tab_manage = st.tabs(["🎾 Predizione", "🛠️ Gestione database"])
 
-# ========== TAB PREVISIONE ==============
+# ========== TAB PREVISIONE ==========
 with tab_predict:
     st.subheader("1️⃣  Parametri di simulazione")
     gender = st.radio("Circuito", ["Maschile (ATP)", "Femminile (WTA)"], horizontal=True)
     gender_code = "M" if gender.startswith("M") else "F"
     surface_options = ["Hard", "Clay", "Grass"]
 
-    filter_name = st.text_input("Cerca giocatore per nome o parte di nome", "")
-    all_players = sorted(stats_df.query("gender == @gender_code")["player"].unique())
-    filtered_players = [p for p in all_players if filter_name.lower() in p.lower()] if filter_name else all_players
-
+    # Ricerca integrata nel selectbox, niente campo aggiuntivo
+    players = sorted(stats_df.query("gender == @gender_code")["player"].unique())
     colA, colB = st.columns(2)
-    player_a = colA.selectbox("Giocatore A", filtered_players, key="A")
-    player_b = colB.selectbox("Giocatore B", filtered_players, key="B")
+    player_a = colA.selectbox("Giocatore A", players, key="A")
+    player_b = colB.selectbox("Giocatore B", players, key="B")
     surface = st.selectbox("Superficie", surface_options)
     first_server = st.radio("Chi serve per primo?", [player_a, player_b])
 
     st.markdown("---")
 
+    # -- Simulazione set --
     if st.button("Calcola probabilità set"):
         pA = estimate_hold_prob(player_a, surface, gender_code, stats_df)
         pB = estimate_hold_prob(player_b, surface, gender_code, stats_df)
-        st.info(
-            f"Probabilità che **{player_a}** tenga il servizio: **{pA*100:.1f}%**\n\n"
-            f"Probabilità che **{player_b}** tenga il servizio: **{pB*100:.1f}%**"
-        )
-        outcomes = simulate_set(pA, pB, first_server="A" if first_server == player_a else "B", n_sim=20000)
-        sorted_outcomes = sorted(outcomes.items(), key=lambda x: -x[1])
-        results_table = [{"Risultato": k, "Probabilità": f"{v*100:.2f}%"} for k, v in sorted_outcomes]
-        st.header("2️⃣  Probabilità risultati esatti del set")
-        st.table(results_table[:12])
 
+        outcomes = simulate_set(
+            pA, pB,
+            first_server="A" if first_server == player_a else "B",
+            n_sim=20000
+        )
+        st.session_state["outcomes"] = outcomes
+        st.session_state["results_table"] = [
+            {"Risultato": k, "Probabilità": f"{v*100:.2f}%"}
+            for k, v in sorted(outcomes.items(), key=lambda x: -x[1])
+        ]
+
+        st.info(
+            f"Probabilità hold {player_a}: **{pA*100:.1f}%** ‒ "
+            f"{player_b}: **{pB*100:.1f}%**"
+        )
+        st.header("2️⃣  Probabilità risultati esatti del set")
+        st.table(st.session_state["results_table"][:12])
+
+    # -- Form quote bookmaker --
+    if st.session_state["outcomes"]:
         st.markdown("---")
         st.header("3️⃣  Confronta con le quote bookmaker")
-        with st.form(key="quote_form"):
-            quote = st.number_input(
-                "Quota bookmaker", min_value=1.01, max_value=1000.0,
-                value=3.50, step=0.01
-            )
-            sel_score = st.selectbox(
-                "Scegli il punteggio", [r["Risultato"] for r in results_table],
-                key="score_sel"
-            )
-            submit_q = st.form_submit_button("Calcola valore")
-        if submit_q:
-            prob = outcomes.get(sel_score, 0)
-            if prob:
-                fair_odds = 1 / prob
-                ev = quote * prob - 1
-                st.metric("Quota fair", f"{fair_odds:.2f}")
-                st.metric("Valore atteso", f"{ev*100:.1f}%")
-                st.success("👍 Value bet!" if ev > 0 else "👎 Non conviene")
-            else:
-                st.error("Punteggio troppo raro nella simulazione.")
-    else:
-        st.info("Scegli i parametri e clicca su **Calcola probabilità set**")
 
-# ========== TAB DATABASE ==============
+        with st.form("quote_form"):
+            quota = st.number_input("Quota bookmaker", 1.01, 1000.0, 3.50, 0.01)
+            sel_score = st.selectbox(
+                "Scegli il punteggio",
+                [r["Risultato"] for r in st.session_state["results_table"]],
+                key="sel_score"
+            )
+            ok = st.form_submit_button("Calcola valore")
+
+        if ok:
+            p = st.session_state["outcomes"][sel_score]
+            fair_odds = 1 / p
+            ev = quota * p - 1
+            col1, col2 = st.columns(2)
+            col1.metric("Quota fair", f"{fair_odds:.2f}")
+            col2.metric("Valore atteso", f"{ev*100:.1f}%")
+            st.success("👍 Value bet!" if ev > 0 else "👎 Non conviene")
+    else:
+        st.info("Prima calcola le probabilità del set per confrontare le quote.")
+
+# ========== TAB GESTIONE DB ==========
 with tab_manage:
     st.markdown("### Aggiungi o aggiorna statistiche di un giocatore")
     with st.form(key="add_stat"):
