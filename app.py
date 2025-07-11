@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 
 # ══════  VERSIONE / RESET SESSIONE  ══════
-APP_VERSION = "2025-07-12-live-set-v1.1"
+APP_VERSION = "2025-07-12-live-set-v1.2"
 if st.session_state.get("version") != APP_VERSION:
     st.session_state.clear()
     st.session_state["version"] = APP_VERSION
@@ -55,7 +55,10 @@ def scarica_e_aggiorna_stats():
                     "return_pts_won": sum(rt_won) / len(rt_won),
                     "gender": gender
                 })
-        return pd.DataFrame(rows)
+        return pd.DataFrame([
+    {"Risultato": k, "Probabilità": f"{v*100:.2f}%"} 
+    for k, v in sorted(live_out.items(), key=lambda x: -x[1])[:12]
+])
 
     stats_df = pd.concat([make_stats(df_atp, "M"), make_stats(df_wta, "F")]).reset_index(drop=True)
     matches_df = pd.concat([df_atp, df_wta])
@@ -140,8 +143,10 @@ with tab_generic:
         st.session_state["results_table"] = sorted(
             st.session_state["outcomes"].items(), key=lambda x: -x[1]
         )
-        st.table(pd.DataFrame(st.session_state["results_table"][:10],
-                              columns=["Risultato", "Probabilità"]))
+        st.table(pd.DataFrame([
+    {"Risultato": k, "Probabilità": f"{v*100:.2f}%"} 
+    for k, v in sorted(live_out.items(), key=lambda x: -x[1])[:12]
+]))
     if st.session_state["outcomes"]:
         st.markdown("---")
         with st.form("quote"):
@@ -149,11 +154,25 @@ with tab_generic:
             score = st.selectbox("Punteggio", [r for r, _ in st.session_state["results_table"]])
             sub = st.form_submit_button("Confronta")
         if sub:
-            p = st.session_state["outcomes"][score]
-            fair = 1 / p
-            ev = quota * p - 1
-            st.metric("Quota fair", f"{fair:.2f}")
-            st.metric("Valore atteso", f"{ev*100:.1f}%")
+    p = st.session_state["outcomes"][score]
+    fair = 1 / p
+    ev = quota * p - 1
+
+    colq, colv = st.columns(2)
+    with colq:
+        st.markdown("#### 💸 Quota fair")
+        st.markdown(f"<div style='font-size:2.2em; font-weight:700; color:#1a66ff'>{fair:.2f}</div>", unsafe_allow_html=True)
+        st.caption("Quota reale calcolata")
+    with colv:
+        st.markdown("#### 📈 Valore atteso")
+        st.markdown(f"<div style='font-size:2.2em; font-weight:700; color:{'green' if ev>0 else 'red'}'>{ev*100:.1f}%</div>", unsafe_allow_html=True)
+        st.caption("Scommessa vantaggiosa" if ev>0 else "Scommessa NON vantaggiosa")
+
+    if ev > 0:
+        st.success("👍 Value bet!")
+    else:
+        st.warning("👎 Non conviene")
+
 # ---------- TAB LIVE ----------
 with tab_live:
     st.markdown("### ⚡ Simula il **prossimo set** con dati live")
