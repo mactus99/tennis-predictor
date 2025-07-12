@@ -2,6 +2,21 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
+import streamlit as st
+import streamlit.components.v1 as components
+
+# Inietta lo script di Google Analytics
+components.html("""
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2FEMB1XB39"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-2FEMB1XB39');
+</script>
+""", height=0)
+
 # Versione: aggiorna ogni volta che modifichi il codice
 APP_VERSION = "2025-07-12-live-set-v1.5.6"
 if st.session_state.get("version") != APP_VERSION:
