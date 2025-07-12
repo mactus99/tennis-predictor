@@ -3,18 +3,7 @@ import pandas as pd
 import numpy as np
 import streamlit.components.v1 as components
 
-GA_SCRIPT = """
-<!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-2FEMB1XB39"></script>
-<script>
-window.dataLayer = window.dataLayer || [];
-function gtag(){dataLayer.push(arguments);}
-gtag('js', new Date());
-gtag('config', 'G-2FEMB1XB39');
-</script>
-"""
-
-components.html(GA_SCRIPT, height=0)
+components.html("""<script async src="https://www.googletagmanager.com/gtag/js?id=G-2FEMB1XB39"></script><script>window.dataLayer = window.dataLayer || [];function gtag(){dataLayer.push(arguments);}gtag('js', new Date());gtag('config', 'G-2FEMB1XB39');</script>""", height=0)
 
 # Versione: aggiorna ogni volta che modifichi il codice
 APP_VERSION = "2025-07-12-live-set-v1.5.6"
